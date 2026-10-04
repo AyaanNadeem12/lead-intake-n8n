@@ -1,0 +1,87 @@
+{
+  "name": "Lead Intake - Error Alert",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9bdd24ad-f018-4409-8325-e83483e885db",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nconst exec = e.execution || {};\n\nconst esc = (s) => String(s ?? '')\n  .replace(/&/g, '&amp;').replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n\nconst workflowName = (e.workflow && e.workflow.name) || 'Unknown workflow';\nconst node = exec.lastNodeExecuted || 'Unknown node';\nconst message = (exec.error && exec.error.message) || 'No error message provided';\nconst url = exec.url || '';\n\nconst subject = `[ALERT] ${workflowName} failed at \"${node}\"`.replace(/[\\r\\n]+/g, ' ');\n\nconst html = `\n<div style=\"font-family:Arial,sans-serif;font-size:14px\">\n  <h2 style=\"margin:0 0 8px;color:#b00020\">Lead intake failure</h2>\n  <p>A submission may not have been saved or notified. Please check it manually.</p>\n  <table>\n    <tr><td style=\"padding:4px 12px 4px 0\"><b>Workflow</b></td><td>${esc(workflowName)}</td></tr>\n    <tr><td style=\"padding:4px 12px 4px 0\"><b>Failed node</b></td><td>${esc(node)}</td></tr>\n    <tr><td style=\"padding:4px 12px 4px 0\"><b>Error</b></td><td>${esc(message)}</td></tr>\n    <tr><td style=\"padding:4px 12px 4px 0\"><b>Execution ID</b></td><td>${esc(exec.id || 'n/a')}</td></tr>\n    <tr><td style=\"padding:4px 12px 4px 0\"><b>Time (UTC)</b></td><td>${new Date().toISOString()}</td></tr>\n  </table>\n  ${url ? `<p><a href=\"${esc(url)}\">Open the failed execution in n8n</a> to see the lead's data.</p>` : ''}\n</div>`;\n\nreturn [{ json: { to: 'youremail@example.com', subject, html } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "b0f9b339-7a8e-4d3c-b71a-dd7b4f45da04",
+      "name": "Build Alert"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: \"Lead Intake <onboarding@resend.dev>\", to: $json.to, subject: $json.subject, html: $json.html }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "47f43c5a-c378-4f87-b0df-a1664a9f9788",
+      "name": "Send Alert",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Resend API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {},
+  "nodeGroups": [],
+  "tags": []
+}

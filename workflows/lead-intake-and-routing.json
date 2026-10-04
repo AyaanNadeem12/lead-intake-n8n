@@ -1,0 +1,943 @@
+{
+  "name": "Lead Intake and Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "92af4cc6-3a72-4399-a192-8483b91dbd95",
+      "name": "Webhook",
+      "webhookId": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\n\n// Trim strings; anything that isn't a string becomes ''\nconst clean = (v) => (typeof v === 'string' ? v.trim() : '');\n// Remove script/style blocks with their contents, then any tags, then stray < >\nconst stripHtml = (s) => s\n  .replace(/<(script|style)[^>]*>[\\s\\S]*?<\\/\\1>/gi, '')\n  .replace(/<[^>]*>/g, '')\n  .replace(/[<>]/g, '')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst name = stripHtml(clean(body.name));\nconst email = clean(body.email).toLowerCase();   // unchanged\nconst phone = clean(body.phone);                  // unchanged (already restricted to phone characters)\nconst country = stripHtml(clean(body.country));\nconst programme = stripHtml(clean(body.programme));\nconst programmeOther = stripHtml(clean(body.programme_other));\n\nconst errors = [];\n\n// Name\nif (!name) errors.push({ field: 'name', message: 'Name is required' });\nelse if (name.length > 100) errors.push({ field: 'name', message: 'Name is too long' });\n\n// Email\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/;\nif (!email) errors.push({ field: 'email', message: 'Email is required' });\nelse if (email.length > 254 || !emailRegex.test(email))\n  errors.push({ field: 'email', message: 'Email format is invalid' });\n\n// Phone: lenient, 7-15 digits, only common phone characters\nif (!phone) errors.push({ field: 'phone', message: 'Phone is required' });\nelse {\n  const digits = phone.replace(/\\D/g, '');\n  if (!/^[+\\d\\s().-]+$/.test(phone) || digits.length < 7 || digits.length > 15)\n    errors.push({ field: 'phone', message: 'Phone number is invalid' });\n}\n\n// Country\nif (!country) errors.push({ field: 'country', message: 'Country is required' });\n\n// Programme (+ \"Other\" text box)\nif (!programme) errors.push({ field: 'programme', message: 'Programme is required' });\nelse if (programme.toLowerCase() === 'other' && !programmeOther)\n  errors.push({ field: 'programme_other', message: 'Please specify your programme' });\n\nreturn [{\n  json: {\n    valid: errors.length === 0,\n    errors,\n    data: { name, email, phone, country, programme, programme_other: programmeOther }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "5c524f36-7014-40c5-9042-95acd1e76fd9",
+      "name": "Validate Input"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": false, \"message\": \"Validation failed\", \"errors\": $json.errors } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        736,
+        144
+      ],
+      "id": "961155e6-c187-4564-9a51-c08aa5fb2376",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "59b20dda-22cf-4138-9942-cd4091038f0e",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ],
+      "id": "7f8d219a-e1b2-479b-a890-740163258512",
+      "name": "isValid"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Your Airtable Base",
+          "cachedResultUrl": "https://airtable.com/appXXXXXXXXXXXXXX"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appXXXXXXXXXXXXXX/tblXXXXXXXXXXXXXX"
+        },
+        "filterByFormula": "=LOWER({Email}) = '{{ $json.email.replace(/'/g, \"\\\\'\") }}'",
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        944,
+        -112
+      ],
+      "id": "3629011d-c420-4255-af6b-689db3c1ae50",
+      "name": "Find existing lead",
+      "alwaysOutputData": true,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_ME",
+          "name": "Airtable Personal Access Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Normalize & Enrich').first().json;\nconst found = $input.first().json;\n\nconst existing = found && found.id ? found : null;\n\nconst f = existing ? (existing.fields || existing) : {};\n\nconst prevCount = Number(f['Submission Count']) || 1;\n\nreturn [{\n  json: {\n    ...lead,\n    is_duplicate: !!existing,\n    record_id: existing ? existing.id : null,\n    first_submitted: existing ? (f['First Submitted'] || lead.received_at) : lead.received_at,\n    last_submitted: lead.received_at,\n    submission_count: existing ? prevCount + 1 : 1,\n    previous: existing\n      ? {\n          name: f['Name'],\n          phone: f['Phone'],\n          country: f['Country'],\n          programme: f['Programme'],\n          route: f['Route'],\n        }\n      : null,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        -112
+      ],
+      "id": "518e5ec7-a6e9-47e6-8544-541d3d904ae9",
+      "name": "Build Record"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json.data;\n\nconst fixCase = (s) => {\n  if (s !== s.toLowerCase() && s !== s.toUpperCase()) return s;\n  return s.toLowerCase().replace(/(^|[\\s'-])(\\p{L})/gu, (m, p, c) => p + c.toUpperCase());\n};\n\nconst COUNTRY_DB = [\n  { name: 'Pakistan', region: 'South Asia', aliases: ['pk', 'pak'] },\n  { name: 'India', region: 'South Asia', aliases: ['in', 'bharat'] },\n  { name: 'Bangladesh', region: 'South Asia', aliases: ['bd'] },\n  { name: 'Sri Lanka', region: 'South Asia', aliases: ['lk'] },\n  { name: 'United States', region: 'North America', aliases: ['us', 'usa', 'u.s.', 'u.s.a.', 'america', 'united states of america'] },\n  { name: 'Canada', region: 'North America', aliases: ['ca'] },\n  { name: 'United Kingdom', region: 'Europe', aliases: ['uk', 'gb', 'u.k.', 'great britain', 'britain', 'england'] },\n  { name: 'Germany', region: 'Europe', aliases: ['de'] },\n  { name: 'United Arab Emirates', region: 'Middle East', aliases: ['uae', 'ae'] },\n  { name: 'Saudi Arabia', region: 'Middle East', aliases: ['ksa', 'sa'] },\n  { name: 'Nigeria', region: 'Africa', aliases: ['ng'] },\n  { name: 'China', region: 'East Asia', aliases: ['cn'] },\n  { name: 'Australia', region: 'Oceania', aliases: ['au'] },\n];\n\nconst key = d.country.toLowerCase().replace(/\\s+/g, ' ').trim();\nconst hit = COUNTRY_DB.find(\n  (c) => c.name.toLowerCase() === key || c.aliases.includes(key)\n);\nconst country = hit ? hit.name : fixCase(d.country.replace(/\\s+/g, ' ').trim());\nconst region = hit ? hit.region : 'Unmapped';\n\nconst isOther = d.programme.toLowerCase() === 'other';\nconst rawProgramme = (isOther ? d.programme_other : d.programme).replace(/\\s+/g, ' ').trim();\nconst isCS = rawProgramme.toLowerCase() === 'computer science';\nconst programme = isCS ? 'Computer Science' : rawProgramme;\nconst route = isCS ? 'Computer Science' : 'General';\n\nlet phone = d.phone.replace(/[^\\d+]/g, '');\nif (phone.startsWith('00')) phone = '+' + phone.slice(2);\nphone = phone.replace(/(?!^)\\+/g, '');\n\nreturn [{\n  json: {\n    name: fixCase(d.name.replace(/\\s+/g, ' ').trim()),\n    email: d.email,\n    phone,\n    country,\n    region,\n    programme,\n    route,\n    received_at: new Date().toISOString(),\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        -112
+      ],
+      "id": "cc091337-5ae4-4ee3-883a-caa39080ba55",
+      "name": "Normalize & Enrich"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "60ec4dd2-a2ca-465a-a6fd-b282eda40aad",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "Computer Science",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1392,
+        -112
+      ],
+      "id": "70fcc912-271b-4e24-a906-754f999268e6",
+      "name": "isComputerScience"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0c72db89-c848-4eea-b2f7-908d78c8febb",
+              "name": "team",
+              "value": "Computer Science Admissions",
+              "type": "string"
+            },
+            {
+              "id": "cc4f5ac0-d846-4acc-bc56-33d9a7aa57b4",
+              "name": "notify_to",
+              "value": "youremail@example.com",
+              "type": "string"
+            },
+            {
+              "id": "de5926b7-6cac-4304-9585-74afbd2c0b9b",
+              "name": "subject_tag",
+              "value": "[CS]",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1616,
+        -208
+      ],
+      "id": "753578e3-cc86-40ea-a759-032a0aacf697",
+      "name": "CS Destination"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "85b2d37e-2e43-4ba4-b48b-1426e716e032",
+              "leftValue": "={{ $json.is_duplicate }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1936,
+        -128
+      ],
+      "id": "f2b7487d-0290-4225-b829-eebf56299bca",
+      "name": "isDuplicate"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Your Airtable Base",
+          "cachedResultUrl": "https://airtable.com/appXXXXXXXXXXXXXX"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appXXXXXXXXXXXXXX/tblXXXXXXXXXXXXXX"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $json.email }}",
+            "Name": "={{ $json.name }}",
+            "Phone": "={{ $json.phone }}",
+            "Country": "={{ $json.country }}",
+            "Region": "={{ $json.region }}",
+            "Programme": "={{ $json.programme }}",
+            "Route": "={{ $json.route }}",
+            "First Submitted": "={{ $json.first_submitted }}",
+            "Last Submitted": "={{ $json.last_submitted }}",
+            "Submission Count": "={{ $json.submission_count }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Region",
+              "displayName": "Region",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Programme",
+              "displayName": "Programme",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Route",
+              "displayName": "Route",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "First Submitted",
+              "displayName": "First Submitted",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Last Submitted",
+              "displayName": "Last Submitted",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Submission Count",
+              "displayName": "Submission Count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        -16
+      ],
+      "id": "a741215a-9127-489c-8650-5893717466b4",
+      "name": "Create Lead",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_ME",
+          "name": "Airtable Personal Access Token"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Your Airtable Base",
+          "cachedResultUrl": "https://airtable.com/appXXXXXXXXXXXXXX"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appXXXXXXXXXXXXXX/tblXXXXXXXXXXXXXX"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.record_id }}",
+            "Name": "={{ $json.name }}",
+            "Phone": "={{ $json.phone }}",
+            "Country": "={{ $json.country }}",
+            "Region": "={{ $json.region }}",
+            "Programme": "={{ $json.programme }}",
+            "Route": "={{ $json.route }}",
+            "Last Submitted": "={{ $json.last_submitted }}",
+            "Submission Count": "={{ $json.submission_count }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Region",
+              "displayName": "Region",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Programme",
+              "displayName": "Programme",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Route",
+              "displayName": "Route",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "First Submitted",
+              "displayName": "First Submitted",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Last Submitted",
+              "displayName": "Last Submitted",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Submission Count",
+              "displayName": "Submission Count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        -240
+      ],
+      "id": "4b344b50-cb7f-4efb-b5ed-fc946d05abc9",
+      "name": "Update Lead",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_ME",
+          "name": "Airtable Personal Access Token"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: true,\n  message: $('Build Record').first().json.is_duplicate\n    ? \"Your details have been updated. Thank you.\"\n    : \"Thank you, we have received your enquiry.\"\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2576,
+        -256
+      ],
+      "id": "2c721ccc-4c48-42fd-9c55-7e12ea9bba99",
+      "name": "Respond 200"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $('Build Record').first().json;\n\nconst dest = r.route === 'Computer Science'\n  ? $('CS Destination').first().json\n  : $('General Destination').first().json;\n\nconst esc = (s) => String(s ?? '')\n  .replace(/&/g, '&amp;').replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n\nconst status = r.is_duplicate ? 'UPDATED' : 'NEW';\nconst subject = `[${status}] ${dest.subject_tag} ${r.name} - ${r.programme}`\n  .replace(/[\\r\\n]+/g, ' ');\n\nlet changesHtml = '';\nif (r.is_duplicate) {\n  const labels = { name: 'Name', phone: 'Phone', country: 'Country', programme: 'Programme', route: 'Route' };\n  const rows = [];\n  for (const [k, label] of Object.entries(labels)) {\n    const oldV = (r.previous && r.previous[k]) || '';\n    if (String(oldV) !== String(r[k])) {\n      rows.push(`<li><b>${label}:</b> ${esc(oldV || '(empty)')} &rarr; ${esc(r[k])}</li>`);\n    }\n  }\n  changesHtml = rows.length\n    ? `<p><b>Changes since last submission:</b></p><ul>${rows.join('')}</ul>`\n    : '<p><i>Resubmitted with no changes to their details.</i></p>';\n}\n\nconst row = (label, value) =>\n  `<tr><td style=\"padding:4px 12px 4px 0;color:#666\"><b>${label}</b></td><td>${esc(value)}</td></tr>`;\n\nconst html = `\n<div style=\"font-family:Arial,sans-serif;font-size:14px\">\n  <h2 style=\"margin:0 0 8px\">${r.is_duplicate ? 'Returning enquiry (updated)' : 'New enquiry'}</h2>\n  <p>Assigned to: <b>${esc(dest.team)}</b></p>\n  <table>\n    ${row('Name', r.name)}\n    ${row('Email', r.email)}\n    ${row('Phone', r.phone)}\n    ${row('Country', `${r.country} (${r.region})`)}\n    ${row('Programme', r.programme)}\n    ${row('Route', r.route)}\n    ${row('Submissions', r.submission_count)}\n    ${row('First submitted', r.first_submitted)}\n    ${row('Last submitted', r.last_submitted)}\n  </table>\n  ${changesHtml}\n</div>`;\n\nreturn [{ json: { to: dest.notify_to, subject, html } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        -192
+      ],
+      "id": "51716eda-ce53-4290-b549-c8ba8d00f69d",
+      "name": "Build Email"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: \"Lead Intake <onboarding@resend.dev>\", to: $json.to, subject: $json.subject, html: $json.html }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3040,
+        -144
+      ],
+      "id": "a698f5f2-450b-4e42-8727-c9bb5ae58fd8",
+      "name": "Send Email",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Resend API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ff0058c8-5e0b-4267-a903-f86a5b32dbfd",
+              "name": "team",
+              "value": "General Admissions",
+              "type": "string"
+            },
+            {
+              "id": "1897576c-3963-4a88-bec4-45009c4dd13e",
+              "name": "notify_to",
+              "value": "youremail@example.com",
+              "type": "string"
+            },
+            {
+              "id": "8ee3107c-c9b9-4001-83c4-0fdd273d37d9",
+              "name": "subject_tag",
+              "value": "[GEN]",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1616,
+        -16
+      ],
+      "id": "d65aeaec-6682-4b1a-9db2-39c5728c2370",
+      "name": "General Destination"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": false, \"message\": \"We could not save your enquiry right now. Please try again in a few minutes.\" } }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2576,
+        0
+      ],
+      "id": "04bc5e7b-f37a-46de-94b5-d748d64e5aad",
+      "name": "Respond 500"
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Lead write failed for {{ $('Build Record').first().json.email }} (route: {{ $('Build Record').first().json.route }})"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2800,
+        48
+      ],
+      "id": "41bc19f6-c0a0-46f1-a94c-b4904055acde",
+      "name": "Fail and Alert"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "isValid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "isValid": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Enrich",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find existing lead": {
+      "main": [
+        [
+          {
+            "node": "Build Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Enrich": {
+      "main": [
+        [
+          {
+            "node": "Find existing lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Record": {
+      "main": [
+        [
+          {
+            "node": "isComputerScience",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "isComputerScience": {
+      "main": [
+        [
+          {
+            "node": "CS Destination",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "General Destination",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CS Destination": {
+      "main": [
+        [
+          {
+            "node": "isDuplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Lead": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 500",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "isDuplicate": {
+      "main": [
+        [
+          {
+            "node": "Update Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 500",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 200": {
+      "main": [
+        [
+          {
+            "node": "Build Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "General Destination": {
+      "main": [
+        [
+          {
+            "node": "isDuplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 500": {
+      "main": [
+        [
+          {
+            "node": "Fail and Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}
