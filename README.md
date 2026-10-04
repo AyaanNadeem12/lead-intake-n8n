@@ -59,7 +59,7 @@ flowchart LR
 
 ![Enquiry form](screenshots/form.png)
 
-The form posts JSON to the webhook. This repo focuses on the workflow, so the form is shown for context.
+The form is included as [`index.html`](index.html), a single static page that posts JSON to the webhook. Open it and replace `YOUR_WEBHOOK_URL` with your n8n production webhook URL before using it.
 
 ## API contract
 
@@ -156,6 +156,7 @@ curl -X POST <WEBHOOK_URL> -H "Content-Type: application/json" -d @sample-payloa
 ├── tests/test_webhook.py              # smoke tests for the live webhook
 ├── screenshots/                       # images used in this README
 └── requirements.txt
+├── index.html                         # enquiry form (static HTML)
 ```
 
 ## Tech
